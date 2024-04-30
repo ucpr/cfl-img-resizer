@@ -56,6 +56,31 @@ async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
         return Response::error("Method Not Allowed".to_string(), 405);
     }
 
+    let url = match req.url() {
+        Ok(url) => url,
+        Err(e) => {
+            log::error!("failed to get url: {e}");
+            return Response::error("failed to get url", 500);
+        }
+    };
+    let cache = Cache::default();
+    let cache_key = CacheKey::Url(url.to_string());
+    let cached = match cache.get(cache_key, false).await {
+        Ok(cached) => cached,
+        Err(e) => {
+            log::error!("failed to get cache: {e}");
+            None
+        }
+    };
+    match cached {
+        Some(cached) => {
+            return Ok(cached);
+        }
+        None => {
+            log::info!("cache not found (url = {url})");
+        }
+    }
+
     let query = match Query::from_request(&req) {
         Ok(query) => query,
         Err(e) => {
@@ -138,7 +163,21 @@ async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
             return Response::error("failed to set Cache-Control header", 500);
         }
     };
-    let resp = resp.with_headers(headers);
+    let mut resp = resp.with_headers(headers);
+    let cloned_resp = match resp.cloned() {
+        Ok(cloned_resp) => cloned_resp,
+        Err(e) => {
+            log::error!("failed to clone response: {e}");
+            return Response::error("failed to clone response", 500);
+        }
+    };
+    match cache.put(url.to_string(), cloned_resp).await {
+        Ok(_) => {}
+        Err(e) => {
+            // cache に保存できなくてもレスポンスは返す
+            log::error!("failed to put cache: {e}");
+        }
+    };
 
     Ok(resp)
 }
