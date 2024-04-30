@@ -7,6 +7,7 @@ use worker::*;
 struct Query {
     width: u32,
     height: u32,
+    blur: Option<f32>,
     token: String,
 }
 
@@ -14,6 +15,7 @@ impl Query {
     fn from_request(req: &Request) -> Result<Self> {
         let mut width: u32 = 0;
         let mut height: u32 = 0;
+        let mut blur: Option<f32> = None;
         let mut token = String::new();
 
         req.url()
@@ -22,6 +24,7 @@ impl Query {
             .for_each(|(k, v)| match k.as_ref() {
                 "width" | "w" => width = v.parse().unwrap(),
                 "height" | "h" => height = v.parse().unwrap(),
+                "blur" => blur = Some(v.parse().unwrap()),
                 "token" => token = v.to_string(),
                 _ => {}
             });
@@ -29,6 +32,7 @@ impl Query {
         Ok(Self {
             width,
             height,
+            blur,
             token,
         })
     }
@@ -130,6 +134,18 @@ async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
         query.height,
         image::imageops::FilterType::Lanczos3,
     );
+    let img = match query.blur {
+        Some(blur) => {
+            if blur < 0.0 || blur > 3.0 {
+                log::error!("invalid blur value: {blur}");
+                return Response::error("invalid blur value", 400);
+            }
+
+            let buf = image::imageops::blur(&img, blur);
+            image::DynamicImage::ImageRgba8(buf)
+        }
+        None => img,
+    };
 
     let mut buffer = std::io::Cursor::new(vec![]);
     match img.write_to(&mut buffer, image::ImageFormat::Png) {
