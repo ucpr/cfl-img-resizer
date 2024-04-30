@@ -1,16 +1,20 @@
+use hex;
 use image;
 use log;
+use sha2::{Digest, Sha256};
 use worker::*;
 
 struct Query {
     width: u32,
     height: u32,
+    token: String,
 }
 
 impl Query {
     fn from_request(req: &Request) -> Result<Self> {
         let mut width: u32 = 0;
         let mut height: u32 = 0;
+        let mut token = String::new();
 
         req.url()
             .unwrap()
@@ -18,10 +22,31 @@ impl Query {
             .for_each(|(k, v)| match k.as_ref() {
                 "width" | "w" => width = v.parse().unwrap(),
                 "height" | "h" => height = v.parse().unwrap(),
+                "token" => token = v.to_string(),
                 _ => {}
             });
 
-        Ok(Self { width, height })
+        Ok(Self {
+            width,
+            height,
+            token,
+        })
+    }
+
+    fn full_path(&self) -> String {
+        format!("/?width={}&height={}", self.width, self.height)
+    }
+
+    pub fn verify_token(&self, secret: String) -> bool {
+        let mut hasher = Sha256::new();
+        hasher.update(self.full_path().as_bytes());
+        hasher.update(b"$");
+        hasher.update(secret.as_bytes());
+
+        let mut buf = [0u8; 32];
+        buf.copy_from_slice(&hasher.finalize());
+
+        hex::encode(buf) == self.token
     }
 }
 
@@ -38,6 +63,15 @@ async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
             return Response::error("failed to parse query", 400);
         }
     };
+    // query の token が正しいか検証
+    // 正しくない場合は query が改ざんされている可能性があるので 403 を返す
+    match query.verify_token(env.secret("TOKEN_SECRET").unwrap().to_string()) {
+        true => {}
+        false => {
+            log::error!("token is invalid");
+            return Response::error("token is invalid", 403);
+        }
+    }
 
     let bucket = match env.bucket("BUCKET") {
         Ok(bucket) => bucket,
