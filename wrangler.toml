@@ -7,3 +7,7 @@ command = "cargo install -q worker-build && worker-build --release"
 
 [env.dev]
 build = { command = "cargo install -q worker-build && worker-build --dev" }
+
+[[r2_buckets]]
+binding = 'BUCKET'
+bucket_name = 'cfl-image-resizer'
