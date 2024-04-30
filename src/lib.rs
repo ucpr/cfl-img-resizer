@@ -2,12 +2,27 @@ use image;
 use log;
 use worker::*;
 
-fn query(req: &Request, key: &str) -> Option<String> {
-    req.url()
-        .ok()?
-        .query_pairs()
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.to_string())
+struct Query {
+    width: u32,
+    height: u32,
+}
+
+impl Query {
+    fn from_request(req: &Request) -> Result<Self> {
+        let mut width: u32 = 0;
+        let mut height: u32 = 0;
+
+        req.url()
+            .unwrap()
+            .query_pairs()
+            .for_each(|(k, v)| match k.as_ref() {
+                "width" | "w" => width = v.parse().unwrap(),
+                "height" | "h" => height = v.parse().unwrap(),
+                _ => {}
+            });
+
+        Ok(Self { width, height })
+    }
 }
 
 #[event(fetch)]
@@ -16,16 +31,11 @@ async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
         return Response::error("Method Not Allowed".to_string(), 405);
     }
 
-    let width = match query(&req, "width") {
-        Some(width) => width,
-        None => {
-            return Response::error("width is required".to_string(), 400);
-        }
-    };
-    let height = match query(&req, "height") {
-        Some(height) => height,
-        None => {
-            return Response::error("width is required".to_string(), 400);
+    let query = match Query::from_request(&req) {
+        Ok(query) => query,
+        Err(e) => {
+            log::error!("failed to parse query: {e}");
+            return Response::error("failed to parse query", 400);
         }
     };
 
@@ -57,8 +67,8 @@ async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
         .unwrap();
 
     let img = img.resize_exact(
-        width.parse().unwrap(),
-        height.parse().unwrap(),
+        query.width,
+        query.height,
         image::imageops::FilterType::Lanczos3,
     );
 
