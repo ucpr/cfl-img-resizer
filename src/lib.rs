@@ -38,7 +38,12 @@ impl Query {
     }
 
     fn full_path(&self) -> String {
-        format!("/?width={}&height={}", self.width, self.height)
+        let mut format = format!("/?width={}&height={}", self.width, self.height);
+        match self.blur {
+            Some(_) => format += &format!("&blur={}", self.blur.unwrap()),
+            None => {}
+        }
+        format
     }
 
     pub fn verify_token(&self, secret: String) -> bool {

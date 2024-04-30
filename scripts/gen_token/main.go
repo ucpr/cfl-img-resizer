@@ -26,7 +26,7 @@ func (q *Query) Token(secret string) string {
 func main() {
 	// pathFormat := "/?width=%d&height=%d"
 	ys := Query{
-		FullPath: "/?width=100&height=200",
+		FullPath: "/?width=100&height=200&blur=3",
 	}
 
 	token := ys.Token(os.Getenv("TOKEN_SECRET"))
